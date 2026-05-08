@@ -18,16 +18,6 @@
 - **💾 离线优先** — Room + DataStore 本地存储，无需网络即可查看课表
 - **✨ 彩蛋** — 设置页版本号连点 3 下复制作者 QQ
 
-## 📸 预览
-
-| 课表主页 | 智能导入 | 主题设置 |
-|:---:|:---:|:---:|
-| ![课表](docs/schedule.png) | ![导入](docs/import.png) | ![主题](docs/theme.png) |
-
-| 个性化设置 | 全局配色 |
-|:---:|:---:|
-| ![设置](docs/settings.png) | ![配色](docs/colors.png) |
-
 ## 🔧 技术栈
 
 | 类别 | 技术 |
@@ -97,7 +87,7 @@ keyPassword=你的密码
 ## 📝 License
 
 ```
-Copyright © 2026 LiBingze. All Rights Reserved.
+Copyright © 2026 UWPBOOM. All Rights Reserved.
 ```
 
 本项目仅供学习交流使用，不得用于商业用途。

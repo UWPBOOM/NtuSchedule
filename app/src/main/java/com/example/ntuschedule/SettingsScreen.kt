@@ -200,7 +200,7 @@ private fun MainSettingsContent(
             Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
 
             ListItem(
-                headlineContent = { Text("版本号（提供反馈请点按多次）") },
+                headlineContent = { Text("版本号") },
                 supportingContent = { Text("v1.2") },
                 leadingContent = { Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                 modifier = Modifier.clickable { onVersionTap() }
