@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.NtuSchedule" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- 彻底去掉干扰代码，只保留无标题栏 -->
+        <!-- 这样状态栏就没有遮罩了，而且退出App会恢复手机原生的退出动画（绝不淡出） -->
+    </style>
+</resources>
