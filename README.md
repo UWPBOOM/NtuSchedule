@@ -2,7 +2,7 @@
 
 > 基于 Jetpack Compose + Material Design 3 的南通大学教务系统课表管理 Android App
 
-[![Release](https://img.shields.io/badge/release-v1.2-blue)](https://github.com/UWPBOOM/NtuSchedule/releases)
+[![Release](https://img.shields.io/badge/release-v1.3-blue)](https://github.com/UWPBOOM/NtuSchedule/releases)
 [![Kotlin](https://img.shields.io/badge/kotlin-1.9.0-purple)](https://kotlinlang.org)
 [![Compose](https://img.shields.io/badge/compose-Material%203-green)](https://developer.android.com/jetpack/compose)
 

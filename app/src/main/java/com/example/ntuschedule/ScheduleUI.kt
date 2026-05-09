@@ -1,6 +1,12 @@
 package com.example.ntuschedule
 
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,15 +25,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 
 val Palettes = listOf(
     // 0: 莫兰迪（默认）
@@ -50,7 +62,11 @@ fun getSectionTime(section: Int, isSummer: Boolean): Pair<String, String> {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
-fun ScheduleGrid(onNavigateToLogin: () -> Unit, onNavigateToSettings: () -> Unit) {
+fun ScheduleGrid(
+    onNavigateToLogin: () -> Unit,
+    onNavigateToSettings: () -> Unit,
+    onNavigateToProfileSettings: (String, String) -> Unit = { _, _ -> }
+) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -62,17 +78,30 @@ fun ScheduleGrid(onNavigateToLogin: () -> Unit, onNavigateToSettings: () -> Unit
     val themeIndex by PreferencesManager.getThemeIndex(context).collectAsState(initial = 0)
     val wallpaperUri by PreferencesManager.getWallpaperUri(context).collectAsState(initial = "")
 
+    // 当前课表的独立第一周第一天（毫秒），-1L=使用全局设置
+    val profileStartDateMillis by ProfilePreferencesManager.getProfileStartDate(context, currentProfileId)
+        .collectAsState(initial = -1L)
+    // 实际生效的开学日期：课表独立 > 全局 > 当前时间（保证永远有效）
+    val effectiveStartDate = remember(profileStartDateMillis, startDateMillis) {
+        val raw = if (profileStartDateMillis > 0L) profileStartDateMillis else startDateMillis
+        if (raw > 0L) raw else System.currentTimeMillis()
+    }
+
+    // 调休记录 JSON（State 对象，derivedStateOf 直接读这个才能追踪变化）
+    val adjustmentsJson by ProfilePreferencesManager.getScheduleAdjustments(context, currentProfileId)
+        .collectAsState(initial = "[]")
+
     var showProfileSheet by remember { mutableStateOf(false) }
-    var selectedCourse by remember { mutableStateOf<Course?>(null) }
+    var selectedConflictGroup by remember { mutableStateOf<ConflictGroup?>(null) }
 
     // 【优化】日历和年份只获取一次，避免 Pager 滑动时重复创建 Calendar 导致掉帧
     val isSummerTime = remember { Calendar.getInstance().get(Calendar.MONTH) + 1 in 5..9 }
     val todayYear = remember { Calendar.getInstance().get(Calendar.YEAR) }
     val todayDayOfYear = remember { Calendar.getInstance().get(Calendar.DAY_OF_YEAR) }
 
-    val safeActualWeek = remember(startDateMillis) {
-        if (startDateMillis > 0L) {
-            val diff = System.currentTimeMillis() - startDateMillis
+    val safeActualWeek = remember(effectiveStartDate) {
+        if (effectiveStartDate > 0L) {
+            val diff = System.currentTimeMillis() - effectiveStartDate
             ((diff / (1000L * 60 * 60 * 24 * 7)).toInt() + 1).coerceIn(1, 20)
         } else 1
     }
@@ -80,10 +109,15 @@ fun ScheduleGrid(onNavigateToLogin: () -> Unit, onNavigateToSettings: () -> Unit
     val pagerState = rememberPagerState(pageCount = { 20 })
     val currentViewWeek = pagerState.currentPage + 1
 
-    // 【修复&优化】加上 currentProfileId 参与重组，并在这里就完成 Profile 过滤！
-    val coursesByWeek = remember(allCourses, currentProfileId) {
+    // 【修复】derivedStateOf 直接读 adjustmentsJson（State），确保变化必定触发重算
+    val coursesByWeek = remember(allCourses, currentProfileId, adjustmentsJson, effectiveStartDate) {
+        android.util.Log.d("ScheduleUI", "=== coursesByWeek 重新计算 ===")
+        android.util.Log.d("ScheduleUI", "adjustmentsJson = $adjustmentsJson")
+        android.util.Log.d("ScheduleUI", "effectiveStartDate = $effectiveStartDate")
+        android.util.Log.d("ScheduleUI", "currentProfileId = $currentProfileId")
+        android.util.Log.d("ScheduleUI", "allCourses count = ${allCourses.size}")
+
         val map = mutableMapOf<Int, MutableList<Course>>()
-        // 关键修复：只保留当前课表配置下的课程
         allCourses.filter { it.profileId == currentProfileId }.forEach { course ->
             course.weeks.split(",").forEach { weekStr ->
                 weekStr.trim().toIntOrNull()?.let { weekNum ->
@@ -91,11 +125,71 @@ fun ScheduleGrid(onNavigateToLogin: () -> Unit, onNavigateToSettings: () -> Unit
                 }
             }
         }
+
+        android.util.Log.d("ScheduleUI", "week map keys = ${map.keys.sorted()}")
+
+        // 在这里直接解析 adjustmentsJson，derivedStateOf 会自动追踪它
+        val parsedAdjustments = try {
+            val arr = org.json.JSONArray(adjustmentsJson)
+            (0 until arr.length()).map { ScheduleAdjustment.fromJson(arr.getJSONObject(it)) }
+        } catch (_: Exception) { emptyList() }
+
+        android.util.Log.d("ScheduleUI", "parsedAdjustments size = ${parsedAdjustments.size}")
+        parsedAdjustments.forEach { adj ->
+            android.util.Log.d("ScheduleUI", "  adj: ${adj.fromDate} -> ${adj.toDate}")
+        }
+
+        // 应用调休
+        if (parsedAdjustments.isNotEmpty() && effectiveStartDate > 0L) {
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            for (adj in parsedAdjustments) {
+                try {
+                    val fromDate = sdf.parse(adj.fromDate)!!
+                    val toDate = sdf.parse(adj.toDate)!!
+                    val startCal = Calendar.getInstance().apply { timeInMillis = effectiveStartDate }
+                    // 计算两个日期对应的教学周
+                    val fromWeek = ((fromDate.time - startCal.timeInMillis) / (1000L * 60 * 60 * 24 * 7)).toInt() + 1
+                    val toWeek = ((toDate.time - startCal.timeInMillis) / (1000L * 60 * 60 * 24 * 7)).toInt() + 1
+
+                    val fromCal = Calendar.getInstance().apply { time = fromDate }
+                    val toCal = Calendar.getInstance().apply { time = toDate }
+                    // 转为 1=周一 ~ 7=周日
+                    val fromDayOfWeek = ((fromCal.get(Calendar.DAY_OF_WEEK) + 5) % 7) + 1
+                    val toDayOfWeek = ((toCal.get(Calendar.DAY_OF_WEEK) + 5) % 7) + 1
+
+                    android.util.Log.d("ScheduleUI", "调休: ${adj.fromDate}(w$fromWeek d$fromDayOfWeek) -> ${adj.toDate}(w$toWeek d$toDayOfWeek)")
+                    if (fromWeek !in 1..20 || toWeek !in 1..20) {
+                        android.util.Log.d("ScheduleUI", "  SKIP: week out of range")
+                        continue
+                    }
+                    // 同周同天才跳过；同周不同天需要迁移！
+                    if (fromWeek == toWeek && fromDayOfWeek == toDayOfWeek) {
+                        android.util.Log.d("ScheduleUI", "  SKIP: same day")
+                        continue
+                    }
+
+                    // 移动课程：fromWeek 周 dayOfWeek=fromDayOfWeek 的课程 → toWeek 周 dayOfWeek=toDayOfWeek
+                    val fromCourses = map[fromWeek]?.filter { it.dayOfWeek == fromDayOfWeek }?.toList() ?: emptyList()
+                    android.util.Log.d("ScheduleUI", "  fromWeek=$fromWeek day=$fromDayOfWeek, courses found: ${fromCourses.size}")
+                    if (fromCourses.isNotEmpty()) {
+                        map[fromWeek] = map[fromWeek]?.filter { it.dayOfWeek != fromDayOfWeek }?.toMutableList() ?: mutableListOf()
+                        val targetList = map.getOrPut(toWeek) { mutableListOf() }
+                        fromCourses.forEach { course ->
+                            targetList.add(course.copy(dayOfWeek = toDayOfWeek))
+                            android.util.Log.d("ScheduleUI", "  MOVED: ${course.name} to week=$toWeek day=$toDayOfWeek")
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("ScheduleUI", "调休解析失败", e)
+                }
+            }
+        }
+
         map
     }
 
-    LaunchedEffect(startDateMillis) {
-        if (startDateMillis > 0L) {
+    LaunchedEffect(effectiveStartDate) {
+        if (effectiveStartDate > 0L) {
             pagerState.scrollToPage(safeActualWeek - 1)
         }
     }
@@ -143,18 +237,21 @@ fun ScheduleGrid(onNavigateToLogin: () -> Unit, onNavigateToSettings: () -> Unit
         }
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // 壁纸已提到外层全屏铺满，此处不再放置
-
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
                 val weekToDisplay = page + 1
 
-                // 查表渲染，O(1) 复杂度
-                val displayCourses = coursesByWeek[weekToDisplay] ?: emptyList()
+                val rawCourses = coursesByWeek[weekToDisplay] ?: emptyList()
 
-                val weekData = remember(startDateMillis, weekToDisplay) {
+                // 【Feature 3】冲突检测：用 ScheduleConflictResolver 处理同一格子的课程
+                val conflictGroups = remember(rawCourses) {
+                    ScheduleConflictResolver.resolve(rawCourses)
+                }
+
+                // 计算周数据时使用 effectiveStartDate
+                val weekData = remember(effectiveStartDate, weekToDisplay) {
                     val baseCal = Calendar.getInstance().apply {
-                        if (startDateMillis > 0L) timeInMillis = startDateMillis
-                        add(Calendar.DAY_OF_YEAR, (weekToDisplay - 1) * 7)
+                        if (effectiveStartDate > 0L) timeInMillis = effectiveStartDate
+                        add(Calendar.DAY_OF_YEAR, (weekToDisplay - 1) * 7)    // 跳到目标周
                     }
                     val month = baseCal.get(Calendar.MONTH) + 1
 
@@ -207,25 +304,38 @@ fun ScheduleGrid(onNavigateToLogin: () -> Unit, onNavigateToSettings: () -> Unit
                                     }
                                 }
                             }
-                            // 底部留白，确保最后一行能滚过屏幕圆角区域
-                            Spacer(modifier = Modifier.height(80.dp))
+                            // 底部留白，确保最后一行能滚过屏幕圆角/导航栏区域
+                            Spacer(modifier = Modifier.height(96.dp))
                         }
 
                         BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxHeight()) {
                             val widthPerDay = maxWidth / 7
                             for (i in 1..12) {
-                                Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), modifier = Modifier.fillMaxWidth().offset(y = (i * 64).dp))
+                                Divider(
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+                                    modifier = Modifier.fillMaxWidth().offset(y = (i * 64).dp)
+                                )
                             }
 
-                            displayCourses.forEach { course ->
+                            // 【Feature 3】使用 conflictGroups 渲染，每格只显示一个主课程
+                            conflictGroups.forEach { group ->
+                                val course = group.mainCourse
+                                val hasConflict = ScheduleConflictResolver.hasConflict(group)
                                 val startOffset = (course.startPeriod - 1) * 64
                                 val height = (course.endPeriod - course.startPeriod + 1) * 64
 
                                 Box(
                                     modifier = Modifier.width(widthPerDay).offset(x = widthPerDay * (course.dayOfWeek - 1), y = startOffset.dp).height(height.dp)
                                 ) {
-                                    CourseCard(course = course, themeIndex = themeIndex, modifier = Modifier.fillMaxSize()) {
-                                        selectedCourse = course
+                                    CourseCard(
+                                        course = course,
+                                        themeIndex = themeIndex,
+                                        hasConflict = hasConflict,
+                                        gridWidth = widthPerDay,
+                                        modifier = Modifier.fillMaxSize()
+                                    ) {
+                                        // 点击时传 ConflictGroup 而非单个 Course，以便显示冲突信息
+                                        selectedConflictGroup = group
                                     }
                                 }
                             }
@@ -238,31 +348,72 @@ fun ScheduleGrid(onNavigateToLogin: () -> Unit, onNavigateToSettings: () -> Unit
     }
 
     if (showProfileSheet) {
-        ProfileManagementSheet(profiles = profiles, currentId = currentProfileId, onDismiss = { showProfileSheet = false })
+        ProfileManagementSheet(
+            profiles = profiles,
+            currentId = currentProfileId,
+            onDismiss = { showProfileSheet = false },
+            onNavigateToSettings = { profileId, profileName ->
+                showProfileSheet = false
+                onNavigateToProfileSettings(profileId, profileName)
+            }
+        )
     }
 
-    selectedCourse?.let { course ->
+    // 【Feature 3】课程详情对话框 — 显示冲突信息（使用 Dialog 确保蒙层覆盖状态栏）
+    selectedConflictGroup?.let { group ->
         AlertDialog(
-            onDismissRequest = { selectedCourse = null },
-            title = { Text(course.name) },
+            onDismissRequest = { selectedConflictGroup = null },
+            title = { Text(group.mainCourse.name, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text("教室: ${course.room}")
-                    Text("教师: ${course.teacher}")
-                    Text("周次: ${course.weeks}周")
-                    Text("节次: 星期${course.dayOfWeek} 第${course.startPeriod}-${course.endPeriod}节")
+                    Text("教室: ${group.mainCourse.room}")
+                    Text("教师: ${group.mainCourse.teacher}")
+                    Text("周次: ${group.mainCourse.weeks}周")
+                    Text("节次: 星期${group.mainCourse.dayOfWeek} 第${group.mainCourse.startPeriod}-${group.mainCourse.endPeriod}节")
+
+                    // 冲突列表
+                    if (ScheduleConflictResolver.hasConflict(group)) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Divider()
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            "⚠ 检测到以下课程冲突",
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        group.allCourses.forEach { c ->
+                            Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                                Text("• ", color = MaterialTheme.colorScheme.error)
+                                Column {
+                                    Text(c.name, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("  教室: ${c.room} | 教师: ${c.teacher}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("  周次: ${c.weeks}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
                 }
             },
-            confirmButton = { TextButton(onClick = { selectedCourse = null }) { Text("关闭") } }
+            confirmButton = { TextButton(onClick = { selectedConflictGroup = null }) { Text("关闭") } }
         )
     }
 }
+
 @Composable
-fun CourseCard(course: Course, themeIndex: Int, modifier: Modifier, onClick: () -> Unit) {
+fun CourseCard(
+    course: Course,
+    themeIndex: Int,
+    hasConflict: Boolean = false,
+    gridWidth: androidx.compose.ui.unit.Dp = 0.dp,
+    modifier: Modifier,
+    onClick: () -> Unit
+) {
     val safeThemeIndex = themeIndex.coerceIn(0, Palettes.size - 1)
     val currentPalette = Palettes[safeThemeIndex]
     val bgColor = currentPalette[course.colorIndex % currentPalette.size].copy(alpha = 0.85f)
-    val textColor = if (isSystemInDarkTheme() && safeThemeIndex != 2) Color.Black else Color.Black
+    val textColor = Color.Black
 
     Box(
         modifier = modifier
@@ -277,45 +428,126 @@ fun CourseCard(course: Course, themeIndex: Int, modifier: Modifier, onClick: () 
             Spacer(modifier = Modifier.height(2.dp))
             Text("@${course.room}", fontSize = 9.sp, color = textColor.copy(alpha = 0.8f), maxLines = 2)
         }
+
+        // 【Feature 3】冲突指示器：右上角小直角等腰三角形
+        if (hasConflict) {
+            val triSize = gridWidth / 8  // 边长 = 格子宽度的 1/8
+            Canvas(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(triSize)
+            ) {
+                // 直角等腰三角形，直角在右上角，两直角边与格子边缘平行
+                val path = Path().apply {
+                    moveTo(size.width, 0f)              // 右上角（直角顶点）
+                    lineTo(size.width, size.height)      // 右边向下
+                    lineTo(0f, size.height)              // 底边向左
+                    close()
+                }
+                // 填充红色
+                drawPath(path = path, color = Color(0xFFE53935))
+                // 描边确保可见
+                drawPath(
+                    path = path,
+                    color = Color(0xFFE53935).copy(alpha = 0.9f),
+                    style = Stroke(width = 1.5f)
+                )
+            }
+        }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileManagementSheet(profiles: List<ScheduleProfile>, currentId: String, onDismiss: () -> Unit) {
+fun ProfileManagementSheet(
+    profiles: List<ScheduleProfile>,
+    currentId: String,
+    onDismiss: () -> Unit,
+    onNavigateToSettings: (String, String) -> Unit = { _, _ -> }
+) {
     var showAddDialog by remember { mutableStateOf(false) }
     var editProfile by remember { mutableStateOf<ScheduleProfile?>(null) }
     var inputName by remember { mutableStateOf("") }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(modifier = Modifier.padding(16.dp).padding(bottom = 32.dp)) {
-            Text("课表管理", fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
-            profiles.forEach { profile ->
-                val isSelected = profile.id == currentId
-                ListItem(
-                    headlineContent = { Text(profile.name, fontWeight = if(isSelected) FontWeight.Bold else FontWeight.Normal) },
-                    leadingContent = {
-                        if(isSelected) Icon(Icons.Default.Check, null, tint = MaterialTheme.colorScheme.primary)
-                        else Spacer(modifier = Modifier.width(24.dp))
-                    },
-                    trailingContent = {
-                        Row {
-                            IconButton(onClick = { editProfile = profile; inputName = profile.name }) { Icon(Icons.Default.Edit, "重命名") }
-                            if (profiles.size > 1) {
-                                IconButton(onClick = { CourseRepository.deleteProfile(profile.id) }) {
-                                    Icon(Icons.Default.Delete, "删除", tint = MaterialTheme.colorScheme.error)
+    // 动画状态：进入时从底部滑入，退出时滑出 + 淡出
+    var sheetVisible by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) { sheetVisible = true }
+
+    fun dismiss() {
+        sheetVisible = false
+        coroutineScope.launch {
+            kotlinx.coroutines.delay(280)
+            onDismiss()
+        }
+    }
+
+    AnimatedVisibility(
+        visible = sheetVisible,
+        enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
+        exit = fadeOut() + slideOutVertically(targetOffsetY = { it })
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable(enabled = true) { dismiss() },
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(enabled = false) { },
+                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 3.dp
+            ) {
+                Column {
+                    // 标题：左侧对齐，与圆角有合理间距
+                    Text(
+                        "课表管理",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = 8.dp)
+                    )
+                    profiles.forEach { profile ->
+                        val isSelected = profile.id == currentId
+                        ListItem(
+                            headlineContent = { Text(profile.name, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                            leadingContent = {
+                                if (isSelected) Icon(Icons.Default.Check, null, tint = MaterialTheme.colorScheme.primary)
+                                else Spacer(modifier = Modifier.width(24.dp))
+                            },
+                            trailingContent = {
+                                Row {
+                                    IconButton(onClick = { onNavigateToSettings(profile.id, profile.name) }) {
+                                        Icon(Icons.Default.Settings, "课表设置", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    IconButton(onClick = { editProfile = profile; inputName = profile.name }) {
+                                        Icon(Icons.Default.Edit, "重命名")
+                                    }
+                                    if (profiles.size > 1) {
+                                        IconButton(onClick = { CourseRepository.deleteProfile(profile.id) }) {
+                                            Icon(Icons.Default.Delete, "删除", tint = MaterialTheme.colorScheme.error)
+                                        }
+                                    }
                                 }
-                            }
-                        }
-                    },
-                    modifier = Modifier.clickable { CourseRepository.switchProfile(profile.id); onDismiss() }
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-            Button(onClick = { showAddDialog = true; inputName = "" }, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Default.Add, null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("新建课表")
+                            },
+                            modifier = Modifier.clickable { CourseRepository.switchProfile(profile.id); dismiss() }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = { showAddDialog = true; inputName = "" },
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                    ) {
+                        Icon(Icons.Default.Add, null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("新建课表")
+                    }
+                    Spacer(modifier = Modifier.height(32.dp))
+                }
             }
         }
     }

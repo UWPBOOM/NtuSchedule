@@ -62,9 +62,18 @@ fun WebViewImportScreen(onBack: () -> Unit, onImportHtml: (String) -> Unit) {
                                     return html;
                                 })();
                             """.trimIndent()
-                            webViewRef?.evaluateJavascript(js) { html ->
-                                val unescapedHtml = html.replace("\\u003C", "<").removeSurrounding("\"")
-                                onImportHtml(unescapedHtml)
+                            webViewRef?.evaluateJavascript(js) { result ->
+                                // evaluateJavascript 回调返回的是 JSON 字符串包裹的结果
+                                val html = if (result != null && result.length >= 2) {
+                                    result.substring(1, result.length - 1)
+                                        .replace("\\\"", "\"")
+                                        .replace("\\n", "")
+                                        .replace("\\t", "")
+                                        .replace("\\u003C", "<")
+                                        .replace("\\u003E", ">")
+                                        .replace("\\\\", "\\")
+                                } else ""
+                                onImportHtml(html)
                             }
                         },
                         icon = { Icon(Icons.Default.Check, "一键抓取") },

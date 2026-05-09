@@ -12,6 +12,7 @@ object CourseRepository {
     private var dao: AppDao? = null
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    private val initialized get() = dao != null
     private fun requireDao(): AppDao = dao ?: error("CourseRepository 未初始化，请先调用 init(context)")
 
     private val _profiles = MutableStateFlow<List<ScheduleProfile>>(emptyList())
@@ -25,6 +26,7 @@ object CourseRepository {
 
     // App 启动时调用，初始化数据库并拉取数据
     fun init(context: Context) {
+        if (initialized) return // 防止重复初始化
         dao = AppDatabase.getDatabase(context).appDao()
         val d = requireDao()
 
@@ -88,6 +90,7 @@ object CourseRepository {
     // 导入新课表写入数据库
     fun importCoursesToCurrentProfile(newCourses: List<Course>, isOverwrite: Boolean) {
         val curId = _currentProfileId.value
+        if (curId.isEmpty() || !initialized) return
         // 把新课程绑上当前课表的ID，并且把课程ID设为0让Room自动生成主键
         val coursesToInsert = newCourses.map { it.copy(profileId = curId, id = 0) }
 

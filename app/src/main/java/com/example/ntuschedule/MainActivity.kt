@@ -47,7 +47,10 @@ class MainActivity : ComponentActivity() {
                             ScheduleGrid(
                                 // 这里把原来的导入去掉了，把智能登录改成了唯一的入口
                                 onNavigateToLogin = { navController.navigate("login") },
-                                onNavigateToSettings = { navController.navigate("settings") }
+                                onNavigateToSettings = { navController.navigate("settings") },
+                                onNavigateToProfileSettings = { profileId, profileName ->
+                                    navController.navigate("profile_settings/$profileId/$profileName")
+                                }
                             )
                         }
 
@@ -85,6 +88,23 @@ class MainActivity : ComponentActivity() {
                             popExitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(300)) }
                         ) {
                             SettingsScreen(onBack = { navController.popBackStack() })
+                        }
+
+                        // 【Feature 2】课表专属设置页路由
+                        composable(
+                            "profile_settings/{profileId}/{profileName}",
+                            enterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(300)) },
+                            exitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(300)) },
+                            popEnterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(300)) },
+                            popExitTransition = { slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(300)) }
+                        ) { backStackEntry ->
+                            val profileId = backStackEntry.arguments?.getString("profileId") ?: ""
+                            val profileName = backStackEntry.arguments?.getString("profileName") ?: "课表"
+                            ProfileSettingsScreen(
+                                profileId = profileId,
+                                profileName = profileName,
+                                onBack = { navController.popBackStack() }
+                            )
                         }
                     }
 

@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.lang.ref.WeakReference
 
 @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,12 +49,21 @@ fun LoginScreen(onBack: () -> Unit, onLoginSuccess: (String) -> Unit) {
     // 手动接管模式标记
     var isManualMode by remember { mutableStateOf(false) }
 
-    // JS 字符串安全转义，防止引号/反斜杠破坏语法
-    fun String.escapeForJs(): String =
-        this.replace("\\", "\\\\")
-            .replace("'", "\\'")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
+    // JS 字符串安全转义，防止引号/反斜杠/换行破坏语法
+    fun String.escapeForJs(): String {
+        val sb = StringBuilder(this.length + 8)
+        for (ch in this) {
+            when (ch) {
+                '\\' -> sb.append("\\\\")
+                '\'' -> sb.append("\\'")
+                '\n' -> sb.append("\\n")
+                '\r' -> sb.append("\\r")
+                '\t' -> sb.append("\\t")
+                else -> sb.append(ch)
+            }
+        }
+        return sb.toString()
+    }
 
     BackHandler(enabled = isCrawling) {
         if (webViewRef?.canGoBack() == true) {
@@ -189,7 +199,7 @@ fun LoginScreen(onBack: () -> Unit, onLoginSuccess: (String) -> Unit) {
 
                                 webViewClient = object : WebViewClient() {
                                     override fun onPageFinished(view: WebView, url: String) {
-                                        val safeUrl = url ?: ""
+                                        val safeUrl = url
 
                                         if (safeUrl.contains("xskbcx_cxXskbcxIndex")) {
                                             progressText = "已到达课表页，正在抓取数据..."
@@ -245,15 +255,15 @@ fun LoginScreen(onBack: () -> Unit, onLoginSuccess: (String) -> Unit) {
                                             """.trimIndent()
                                             view.evaluateJavascript(js, null)
 
-                                            // 5秒超时监控
+                                            // 5秒超时监控 — 使用 WeakReference 避免生命周期问题
+                                            val weakRef = java.lang.ref.WeakReference(webViewRef)
                                             scope.launch {
-                                                delay(5000) // 等待 5 秒
-                                                // 如果5秒后已退出抓取状态，跳过
+                                                delay(5000)
                                                 if (!isCrawling) return@launch
-                                                // 如果当前页面还是登录页，说明卡住了
-                                                val currentUrl = webViewRef?.url
+                                                val wv = weakRef.get()
+                                                val currentUrl = wv?.url
                                                 if (currentUrl?.contains("login") == true || currentUrl?.endsWith("jwglxt/") == true) {
-                                                    isManualMode = true // 开启手动模式
+                                                    isManualMode = true
                                                     progressText = "自动点击失败，请您手动点击【登录】按钮！"
                                                 }
                                             }
