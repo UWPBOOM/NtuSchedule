@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,8 +18,10 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -66,6 +69,11 @@ private val PreviewCourses = listOf(
     Triple("形策", "综合楼301", 0) to Triple(2, 1, 1),        // 周二单节
 )
 
+// ══════════════════════════════════════
+//  设置子页面枚举
+// ══════════════════════════════════════
+private enum class SettingsSubScreen { MAIN, THEME, ABOUT }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(onBack: () -> Unit) {
@@ -74,6 +82,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
     var showDatePicker by remember { mutableStateOf(false) }
     var showThemeSettings by remember { mutableStateOf(false) }
+    var showAbout by remember { mutableStateOf(false) }
     val datePickerState = rememberDatePickerState()
 
     val startDateMillis by PreferencesManager.getStartDate(context).collectAsState(initial = System.currentTimeMillis())
@@ -109,25 +118,26 @@ fun SettingsScreen(onBack: () -> Unit) {
         SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(startDateMillis))
     }
 
-    // ───── 版本号彩蛋 ─────
-    var versionTapCount by remember { mutableStateOf(0) }
+    // ───── 带动画的主题设置 / 关于 / 主设置切换 ─────
+    val settingsSubScreen = when {
+        showThemeSettings -> SettingsSubScreen.THEME
+        showAbout -> SettingsSubScreen.ABOUT
+        else -> SettingsSubScreen.MAIN
+    }
 
-    // ───── 带动画的主题设置 / 主设置切换 ─────
     AnimatedContent(
-        targetState = showThemeSettings,
+        targetState = settingsSubScreen,
         transitionSpec = {
-            if (targetState) {
-                // 进入主题设置：新页从右滑入，旧页向左滑出
+            if (targetState != SettingsSubScreen.MAIN) {
                 (slideInHorizontally { it } togetherWith slideOutHorizontally { -it })
             } else {
-                // 返回主设置：旧页向右滑出，新页从左滑入
                 (slideInHorizontally { -it } togetherWith slideOutHorizontally { it })
             }
         },
-        label = "themeSettings"
-    ) { inTheme ->
-        if (inTheme) {
-            ThemeSettingsSubScreen(
+        label = "settingsSubScreen"
+    ) { screen ->
+        when (screen) {
+            SettingsSubScreen.THEME -> ThemeSettingsSubScreen(
                 themeIndex = themeIndex,
                 globalColorIndex = globalColorIndex,
                 wallpaperUri = wallpaperUri,
@@ -137,21 +147,14 @@ fun SettingsScreen(onBack: () -> Unit) {
                 onPickWallpaper = { imagePickerLauncher.launch(arrayOf("image/*")) },
                 onClearWallpaper = { scope.launch { PreferencesManager.saveWallpaperUri(context, "") } }
             )
-        } else {
-            MainSettingsContent(
+            SettingsSubScreen.ABOUT -> AboutSubScreen(
+                onBack = { showAbout = false }
+            )
+            SettingsSubScreen.MAIN -> MainSettingsContent(
                 dateStr = dateStr,
                 onThemeSettings = { showThemeSettings = true },
                 onDatePicker = { showDatePicker = true },
-                versionTapCount = versionTapCount,
-                onVersionTap = {
-                    versionTapCount++
-                    if (versionTapCount >= 3) {
-                        versionTapCount = 0
-                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        cm.setPrimaryClip(ClipData.newPlainText("author_qq", "2451177632"))
-                        Toast.makeText(context, "已复制作者QQ，添加QQ以提供反馈", Toast.LENGTH_LONG).show()
-                    }
-                },
+                onAbout = { showAbout = true },
                 onBack = onBack
             )
         }
@@ -161,14 +164,13 @@ fun SettingsScreen(onBack: () -> Unit) {
 // ══════════════════════════════════════
 //  主设置列表
 // ══════════════════════════════════════
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun MainSettingsContent(
     dateStr: String,
     onThemeSettings: () -> Unit,
     onDatePicker: () -> Unit,
-    versionTapCount: Int,
-    onVersionTap: () -> Unit,
+    onAbout: () -> Unit,
     onBack: () -> Unit
 ) {
     Scaffold(
@@ -179,40 +181,64 @@ private fun MainSettingsContent(
             )
         }
     ) { padding ->
-        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+        ) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            ) {
+                Column {
+                    ListItem(
+                        headlineContent = { Text("主题设置") },
+                        supportingContent = { Text("配色方案、壁纸与预览") },
+                        leadingContent = { Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        trailingContent = { Icon(Icons.Default.KeyboardArrowRight, "进入") },
+                        modifier = Modifier.clickable { onThemeSettings() }
+                    )
 
-            ListItem(
-                headlineContent = { Text("主题设置", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
-                supportingContent = { Text("配色方案、壁纸与预览") },
-                leadingContent = { Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                trailingContent = { Icon(Icons.Default.KeyboardArrowRight, "进入") },
-                modifier = Modifier.clickable { onThemeSettings() }
-            )
+                    Divider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    )
 
-            Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
+                    ListItem(
+                        headlineContent = { Text("设置第一周的第一天") },
+                        supportingContent = { Text("当前: $dateStr") },
+                        leadingContent = { Icon(Icons.Default.DateRange, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        modifier = Modifier.clickable { onDatePicker() }
+                    )
 
-            ListItem(
-                headlineContent = { Text("设置第一周的第一天") },
-                supportingContent = { Text("当前: $dateStr") },
-                leadingContent = { Icon(Icons.Default.DateRange, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                modifier = Modifier.clickable { onDatePicker() }
-            )
-            Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
+                    Divider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    )
 
-            ListItem(
-                headlineContent = { Text("版本号") },
-                supportingContent = { Text("v1.3") },
-                leadingContent = { Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                modifier = Modifier.clickable { onVersionTap() }
-            )
+                    ListItem(
+                        headlineContent = { Text("关于") },
+                        supportingContent = { Text("v1.3 · 检查更新") },
+                        leadingContent = { Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        trailingContent = { Icon(Icons.Default.KeyboardArrowRight, "进入") },
+                        modifier = Modifier.clickable { onAbout() }
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.weight(1f))
             Column(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Copyright © 2026 UWPBOOM", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("All Rights Reserved", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Copyright © 2026 UWPBOOM", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                Text("All Rights Reserved", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
             }
         }
     }
@@ -221,7 +247,7 @@ private fun MainSettingsContent(
 // ══════════════════════════════════════
 //  主题设置子页面（二级菜单）
 // ══════════════════════════════════════
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun ThemeSettingsSubScreen(
     themeIndex: Int,
@@ -254,6 +280,7 @@ private fun ThemeSettingsSubScreen(
                 .padding(padding)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
+                .padding(16.dp)
         ) {
 
             // ====== 课程 UI 预览台（7天课表风格） ======
@@ -261,7 +288,6 @@ private fun ThemeSettingsSubScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 16.dp)
                         .height(200.dp),
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
@@ -340,99 +366,197 @@ private fun ThemeSettingsSubScreen(
                     modifier = Modifier.padding(top = 6.dp, bottom = 8.dp))
             }
 
-            Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
+            // ====== 主题配色 + 全局配色 + 壁纸 统一 Card ======
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            ) {
+                Column {
+                    // ── 主题配色 ──
+                    Text("主题配色",
+                        modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 6.dp),
+                        fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary)
 
-            // ====== 主题配色 ======
-            Text("主题配色",
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly) {
-                listOf("莫兰迪", "马卡龙", "MD3").forEachIndexed { index, name ->
-                    Column(horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.clickable { onSelectTheme(index) }) {
-                        Box(Modifier.size(40.dp).clip(CircleShape).background(Palettes.getOrElse(index) { Palettes[0] }[0]),
-                            contentAlignment = Alignment.Center) {
-                            if (themeIndex == index) Icon(Icons.Default.Check, null, tint = Color.Black)
+                    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly) {
+                        listOf("莫兰迪", "马卡龙", "MD3").forEachIndexed { index, name ->
+                            Column(horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.clickable { onSelectTheme(index) }) {
+                                Box(Modifier.size(40.dp).clip(CircleShape).background(Palettes.getOrElse(index) { Palettes[0] }[0]),
+                                    contentAlignment = Alignment.Center) {
+                                    if (themeIndex == index) Icon(Icons.Default.Check, null, tint = Color.Black)
+                                }
+                                Spacer(Modifier.height(4.dp)); Text(name, fontSize = 12.sp)
+                            }
                         }
-                        Spacer(Modifier.height(4.dp)); Text(name, fontSize = 12.sp)
                     }
-                }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
-            Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
+                    Divider(
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 6.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    )
 
-            // ====== 更改全局配色 ======
-            var showGlobalColorPicker by remember { mutableStateOf(false) }
-            ListItem(
-                headlineContent = { Text("更改全局配色") },
-                supportingContent = { Text("改变重点文字和图标的颜色") },
-                leadingContent = {
-                    Box(Modifier.size(24.dp).clip(CircleShape).background(
-                        if (globalColorIndex in 1 until AccentColorOptions.size) Color(AccentColorOptions[globalColorIndex].hex)
-                        else MaterialTheme.colorScheme.primary))
-                },
-                trailingContent = {
-                    Icon(if (showGlobalColorPicker) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, "展开")
-                },
-                modifier = Modifier.clickable { showGlobalColorPicker = !showGlobalColorPicker }
-            )
+                    // ── 更改全局配色 ──
+                    var showGlobalColorPicker by remember { mutableStateOf(false) }
+                    ListItem(
+                        headlineContent = { Text("更改全局配色") },
+                        supportingContent = { Text("改变重点文字和图标的颜色") },
+                        leadingContent = {
+                            Box(Modifier.size(24.dp).clip(CircleShape).background(
+                                if (globalColorIndex > 0 && globalColorIndex < AccentColorOptions.size) Color(AccentColorOptions[globalColorIndex].hex)
+                                else MaterialTheme.colorScheme.primary))
+                        },
+                        trailingContent = {
+                            Icon(if (showGlobalColorPicker) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, "展开")
+                        },
+                        modifier = Modifier.clickable { showGlobalColorPicker = !showGlobalColorPicker }
+                    )
 
-            if (showGlobalColorPicker) {
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                ) {
-                    Column {
+                    if (showGlobalColorPicker) {
                         AccentColorOptions.forEachIndexed { index, (name, hex) ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().clickable { onSelectGlobalColor(index) }
-                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    .padding(horizontal = 16.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(Modifier.size(28.dp).clip(CircleShape).background(Color(hex)))
                                 Spacer(Modifier.width(14.dp))
-                                Text(name, fontSize = 15.sp,
-                                    fontWeight = if (index == globalColorIndex) FontWeight.Bold else FontWeight.Normal,
+                                Text(name, fontSize = 14.sp,
+                                    fontWeight = if (index == globalColorIndex) FontWeight.Medium else FontWeight.Normal,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.weight(1f))
-                                OutlinedButton(
-                                    onClick = { onSelectGlobalColor(index) },
-                                    border = BorderStroke(1.dp,
-                                        if (index == globalColorIndex) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.outlineVariant),
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = if (index == globalColorIndex) MaterialTheme.colorScheme.primary else Color.Gray)
-                                ) {
-                                    Text(if (index == globalColorIndex) "使用中" else "使用",
-                                        fontSize = 13.sp,
-                                        fontWeight = if (index == globalColorIndex) FontWeight.Bold else FontWeight.Normal)
+                                if (index == globalColorIndex) {
+                                    Icon(Icons.Default.Check, null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp))
                                 }
+                            }
+                            if (index < AccentColorOptions.size - 1) {
+                                Divider(
+                                    modifier = Modifier.padding(start = 58.dp),
+                                    thickness = 0.5.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
+                                )
                             }
                         }
                     }
+
+                    Divider(
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    )
+
+                    // ── 自定义壁纸 ──
+                    ListItem(
+                        headlineContent = { Text("设置自定义壁纸") },
+                        supportingContent = { Text(if (wallpaperUri.isNotBlank()) "已开启 (长按清除)" else "框选裁剪一张图片") },
+                        leadingContent = { Icon(Icons.Default.Face, null, tint = MaterialTheme.colorScheme.primary) },
+                        modifier = Modifier.combinedClickable(
+                            onClick = { if (wallpaperUri.isBlank()) onPickWallpaper() },
+                            onLongClick = { if (wallpaperUri.isNotBlank()) onClearWallpaper() }
+                        )
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-            Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
-
-            // ====== 自定义壁纸 ======
-            ListItem(
-                headlineContent = { Text("设置自定义壁纸") },
-                supportingContent = { Text(if (wallpaperUri.isNotBlank()) "已开启 (点击清除)" else "框选裁剪一张图片") },
-                leadingContent = { Icon(Icons.Default.Face, null, tint = MaterialTheme.colorScheme.primary) },
-                modifier = Modifier.clickable {
-                    if (wallpaperUri.isNotBlank()) onClearWallpaper() else onPickWallpaper()
-                }
-            )
-            Divider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp)
-
             Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+// ══════════════════════════════════════
+//  关于子页面
+// ══════════════════════════════════════
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AboutSubScreen(
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    var versionTapCount by remember { mutableStateOf(0) }
+
+    androidx.activity.compose.BackHandler(enabled = true) { onBack() }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("关于") },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "返回") } }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+        ) {
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            ) {
+                Column {
+                    ListItem(
+                        headlineContent = { Text("当前版本") },
+                        supportingContent = { Text("v1.3") },
+                        leadingContent = { Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary) },
+                        modifier = Modifier.clickable {
+                            versionTapCount++
+                            if (versionTapCount >= 3) {
+                                versionTapCount = 0
+                                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                cm.setPrimaryClip(ClipData.newPlainText("author_qq", "2451177632"))
+                                Toast.makeText(context, "已复制作者QQ，添加QQ以提供反馈", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    )
+
+                    Divider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    )
+
+                    ListItem(
+                        headlineContent = { Text("检查更新") },
+                        supportingContent = { Text("前往 GitHub Releases 查看最新版本") },
+                        leadingContent = { Icon(Icons.Default.Refresh, null, tint = MaterialTheme.colorScheme.primary) },
+                        modifier = Modifier.clickable {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/UWPBOOM/NtuSchedule/releases"))
+                            context.startActivity(intent)
+                        }
+                    )
+
+                    Divider(
+                        modifier = Modifier.padding(start = 56.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                    )
+
+                    ListItem(
+                        headlineContent = { Text("开源许可") },
+                        supportingContent = { Text("本项目基于 GPL-3.0 协议开源") },
+                        leadingContent = { Icon(Icons.Default.Share, null, tint = MaterialTheme.colorScheme.primary) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("Copyright © 2026 UWPBOOM", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                Text("All Rights Reserved", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+            }
         }
     }
 }

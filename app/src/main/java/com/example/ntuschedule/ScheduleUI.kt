@@ -211,16 +211,16 @@ fun ScheduleGrid(
             topBar = {
                 TopAppBar(
                 title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.clickable { showProfileSheet = true }.padding(4.dp)
+                    Column(
+                        modifier = Modifier.clickable { showProfileSheet = true }.padding(vertical = 2.dp)
                     ) {
-                        Text(profiles.find { it.id == currentProfileId }?.name ?: "默认课表", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        Icon(Icons.Default.KeyboardArrowDown, "切换")
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(profiles.find { it.id == currentProfileId }?.name ?: "默认课表", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.KeyboardArrowDown, "切换", modifier = Modifier.size(20.dp))
+                        }
                         Text(
                             text = "第 $currentViewWeek 周",
-                            fontSize = 14.sp,
+                            fontSize = 12.sp,
                             color = if (currentViewWeek == safeActualWeek) MaterialTheme.colorScheme.primary else Color.Red
                         )
                     }
@@ -389,7 +389,7 @@ fun ScheduleGrid(
                                 Column {
                                     Text(c.name, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                                     Text("  教室: ${c.room} | 教师: ${c.teacher}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("  周次: ${c.weeks}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("  节次: 星期${c.dayOfWeek} 第${c.startPeriod}-${c.endPeriod}节 | 周次: ${c.weeks}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
@@ -425,8 +425,7 @@ fun CourseCard(
     ) {
         Column {
             Text(course.name, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 4, lineHeight = 12.sp, color = textColor)
-            Spacer(modifier = Modifier.height(2.dp))
-            Text("@${course.room}", fontSize = 9.sp, color = textColor.copy(alpha = 0.8f), maxLines = 2)
+            Text("@${course.room}", fontSize = 9.sp, color = textColor.copy(alpha = 0.8f), maxLines = 2, lineHeight = 11.sp)
         }
 
         // 【Feature 3】冲突指示器：右上角小直角等腰三角形
