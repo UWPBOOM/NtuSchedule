@@ -224,7 +224,7 @@ private fun MainSettingsContent(
 
                     ListItem(
                         headlineContent = { Text("关于") },
-                        supportingContent = { Text("v1.3 · 检查更新") },
+                        supportingContent = { Text("v1.3.1 · 检查更新") },
                         leadingContent = { Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                         trailingContent = { Icon(Icons.Default.KeyboardArrowRight, "进入") },
                         modifier = Modifier.clickable { onAbout() }
@@ -506,7 +506,7 @@ private fun AboutSubScreen(
                 Column {
                     ListItem(
                         headlineContent = { Text("当前版本") },
-                        supportingContent = { Text("v1.3") },
+                        supportingContent = { Text("v1.3.1") },
                         leadingContent = { Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary) },
                         modifier = Modifier.clickable {
                             versionTapCount++
