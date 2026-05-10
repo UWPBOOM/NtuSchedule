@@ -2,7 +2,7 @@
 
 > 基于 Jetpack Compose + Material Design 3 的南通大学教务系统课表管理 Android App
 
-[![Release](https://img.shields.io/badge/release-v1.3-blue)](https://github.com/UWPBOOM/NtuSchedule/releases)
+[![Release](https://img.shields.io/badge/release-v1.3.1-blue)](https://github.com/UWPBOOM/NtuSchedule/releases)
 [![Kotlin](https://img.shields.io/badge/kotlin-1.9.0-purple)](https://kotlinlang.org)
 [![Compose](https://img.shields.io/badge/compose-Material%203-green)](https://developer.android.com/jetpack/compose)
 [![Min SDK](https://img.shields.io/badge/min%20sdk-26-orange)](https://developer.android.com)
@@ -27,7 +27,7 @@
 | 类别 | 技术 |
 |------|------|
 | UI 框架 | Jetpack Compose + Material Design 3 |
-| 导航 | Navigation Compose + 自定义 iOS 风格过场动画 |
+| 导航 | Navigation Compose |
 | 数据库 | Room + KSP 编译时注解 |
 | 偏好存储 | DataStore Preferences（全局设置 + 课表独立设置） |
 | 网络请求 | OkHttp 4.12 |
