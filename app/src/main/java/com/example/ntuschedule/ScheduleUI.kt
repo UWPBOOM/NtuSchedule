@@ -305,7 +305,7 @@ fun ScheduleGrid(
                                 }
                             }
                             // 底部留白，确保最后一行能滚过屏幕圆角/导航栏区域
-                            Spacer(modifier = Modifier.height(96.dp))
+                            Spacer(modifier = Modifier.height(120.dp))
                         }
 
                         BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -359,45 +359,178 @@ fun ScheduleGrid(
         )
     }
 
-    // 【Feature 3】课程详情对话框 — 显示冲突信息（使用 Dialog 确保蒙层覆盖状态栏）
+    // 【Feature 3】课程详情对话框 — MD3 风格，显示冲突信息
     selectedConflictGroup?.let { group ->
-        AlertDialog(
-            onDismissRequest = { selectedConflictGroup = null },
-            title = { Text(group.mainCourse.name, fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    Text("教室: ${group.mainCourse.room}")
-                    Text("教师: ${group.mainCourse.teacher}")
-                    Text("周次: ${group.mainCourse.weeks}周")
-                    Text("节次: 星期${group.mainCourse.dayOfWeek} 第${group.mainCourse.startPeriod}-${group.mainCourse.endPeriod}节")
+        val dayLabel = mapOf(
+            1 to "星期一", 2 to "星期二", 3 to "星期三", 4 to "星期四",
+            5 to "星期五", 6 to "星期六", 7 to "星期日"
+        )
+        val hasConflict = ScheduleConflictResolver.hasConflict(group)
+        val c = group.mainCourse
 
-                    // 冲突列表
-                    if (ScheduleConflictResolver.hasConflict(group)) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Divider()
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            "⚠ 检测到以下课程冲突",
-                            color = MaterialTheme.colorScheme.error,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        group.allCourses.forEach { c ->
-                            Row(modifier = Modifier.padding(vertical = 2.dp)) {
-                                Text("• ", color = MaterialTheme.colorScheme.error)
-                                Column {
-                                    Text(c.name, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    Text("  教室: ${c.room} | 教师: ${c.teacher}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("  节次: 星期${c.dayOfWeek} 第${c.startPeriod}-${c.endPeriod}节 | 周次: ${c.weeks}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Dialog(
+            onDismissRequest = { selectedConflictGroup = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp,
+                modifier = Modifier
+                    .fillMaxWidth(0.76f)
+                    .clip(RoundedCornerShape(28.dp))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState())
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // ═══ 标题（居中） ═══
+                    Text(
+                        c.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 4.dp)
+                    )
+
+                    // ═══ 课程信息（紧凑单行） ═══
+                    Column(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // ─── 教室 ───
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Home,
+                                null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                "教室：${c.room}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        // ─── 教师 ───
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Person,
+                                null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                "教师：${c.teacher}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        // ─── 上课时间 ───
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.DateRange,
+                                null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                "${dayLabel[c.dayOfWeek] ?: "周${c.dayOfWeek}"}  第 ${c.startPeriod}–${c.endPeriod} 节",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    // ═══ 冲突课程列表 ═══
+                    if (hasConflict) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                null,
+                                modifier = Modifier.size(22.dp),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                            Text(
+                                "课程冲突（${group.allCourses.size} 门）",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            group.allCourses.forEach { conflict ->
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f),
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        conflict.name,
+                                        fontWeight = FontWeight.SemiBold,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Text(
+                                        "教室：${conflict.room}  |  教师：${conflict.teacher}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        "${dayLabel[conflict.dayOfWeek] ?: "周${conflict.dayOfWeek}"}  第 ${conflict.startPeriod}–${conflict.endPeriod} 节",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
                         }
                     }
+
+                    // ═══ 关闭按钮 ═══
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = { selectedConflictGroup = null }) {
+                            Text("关闭")
+                        }
+                    }
                 }
-            },
-            confirmButton = { TextButton(onClick = { selectedConflictGroup = null }) { Text("关闭") } }
-        )
+            }
+        }
     }
 }
 

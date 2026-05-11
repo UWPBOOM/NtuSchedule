@@ -192,7 +192,7 @@ private fun MainSettingsContent(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
             ) {
                 Column {
                     ListItem(
@@ -224,7 +224,7 @@ private fun MainSettingsContent(
 
                     ListItem(
                         headlineContent = { Text("关于") },
-                        supportingContent = { Text("v1.3.1 · 检查更新") },
+                        supportingContent = { Text("当前版本 · 检查更新") },
                         leadingContent = { Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                         trailingContent = { Icon(Icons.Default.KeyboardArrowRight, "进入") },
                         modifier = Modifier.clickable { onAbout() }
@@ -371,7 +371,7 @@ private fun ThemeSettingsSubScreen(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
             ) {
                 Column {
                     // ── 主题配色 ──
@@ -454,7 +454,7 @@ private fun ThemeSettingsSubScreen(
                     // ── 自定义壁纸 ──
                     ListItem(
                         headlineContent = { Text("设置自定义壁纸") },
-                        supportingContent = { Text(if (wallpaperUri.isNotBlank()) "已开启 (长按清除)" else "框选裁剪一张图片") },
+                        supportingContent = { Text(if (wallpaperUri.isNotBlank()) "已开启 (长按清除)" else "选择一张图片") },
                         leadingContent = { Icon(Icons.Default.Face, null, tint = MaterialTheme.colorScheme.primary) },
                         modifier = Modifier.combinedClickable(
                             onClick = { if (wallpaperUri.isBlank()) onPickWallpaper() },
@@ -501,12 +501,12 @@ private fun AboutSubScreen(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
             ) {
                 Column {
                     ListItem(
                         headlineContent = { Text("当前版本") },
-                        supportingContent = { Text("v1.3.1") },
+                        supportingContent = { Text("V 1.3.2") },
                         leadingContent = { Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary) },
                         modifier = Modifier.clickable {
                             versionTapCount++
