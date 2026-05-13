@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        // ⭐ 完美的 iOS 经典动画：从右往左进，从左往右出
+                        // ⭐ iOS 风格滑动动画 + FastOutSlowIn 缓动，丝滑不僵硬
                         composable(
                             "login",
                             enterTransition = { slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(300)) },

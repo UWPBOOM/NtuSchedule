@@ -9,7 +9,9 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ArrowBack
@@ -19,6 +21,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -48,6 +51,36 @@ fun LoginScreen(onBack: () -> Unit, onLoginSuccess: (String) -> Unit) {
 
     // 手动接管模式标记
     var isManualMode by remember { mutableStateOf(false) }
+
+    // ⭐ 学年 / 学期选项
+    data class YearOption(val value: String, val label: String)
+    data class SemesterOption(val value: String, val label: String)
+
+    val yearOptions = remember {
+        val now = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        ((now - 5)..(now + 5)).map { y -> YearOption(y.toString(), "$y-${y + 1}") }
+    }
+    val semesterOptions = listOf(
+        SemesterOption("3", "第一学期"),
+        SemesterOption("12", "第二学期")
+    )
+
+    // ⭐ 纯系统时间推断，不记用户选择：8月后=第一学期(学年=今年)，1月=第一学期(学年=去年)，2-7月=第二学期(学年=去年)
+    val (smartYear, smartSemester) = remember {
+        val cal = java.util.Calendar.getInstance()
+        val month = cal.get(java.util.Calendar.MONTH) + 1
+        val year = cal.get(java.util.Calendar.YEAR)
+        when {
+            month >= 8 -> year.toString() to "3"
+            month == 1 -> (year - 1).toString() to "3"
+            else -> (year - 1).toString() to "12"
+        }
+    }
+
+    var selectedYear by remember { mutableStateOf(smartYear) }
+    var selectedSemester by remember { mutableStateOf(smartSemester) }
+    var showYearDialog by remember { mutableStateOf(false) }
+    var showSemesterDialog by remember { mutableStateOf(false) }
 
     // JS 字符串安全转义，防止引号/反斜杠/换行破坏语法
     fun String.escapeForJs(): String {
@@ -126,6 +159,38 @@ fun LoginScreen(onBack: () -> Unit, onLoginSuccess: (String) -> Unit) {
                         singleLine = true
                     )
 
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // ⭐ 学年选择（OutlinedTextField 风格，透明遮罩捕获点击）
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = yearOptions.find { it.value == selectedYear }?.label ?: "",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("学年") },
+                            trailingIcon = { Text("▾", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        Box(modifier = Modifier.matchParentSize().clickable { showYearDialog = true })
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // ⭐ 学期选择（OutlinedTextField 风格，透明遮罩捕获点击）
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = semesterOptions.find { it.value == selectedSemester }?.label ?: "",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("学期") },
+                            trailingIcon = { Text("▾", fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        Box(modifier = Modifier.matchParentSize().clickable { showSemesterDialog = true })
+                    }
+
                     Spacer(modifier = Modifier.height(32.dp))
 
                     Button(
@@ -202,8 +267,28 @@ fun LoginScreen(onBack: () -> Unit, onLoginSuccess: (String) -> Unit) {
                                         val safeUrl = url
 
                                         if (safeUrl.contains("xskbcx_cxXskbcxIndex")) {
-                                            progressText = "已到达课表页，正在抓取数据..."
-                                            val js = "javascript:setTimeout(function() { window.HTMLOUT.processHTML(document.documentElement.outerHTML); }, 1500);"
+                                            progressText = "正在切换学年学期并查询课表..."
+                                            val js = """
+                                                javascript:(function() {
+                                                    var xnm = document.getElementById('xnm');
+                                                    var xqm = document.getElementById('xqm');
+                                                    var btn = document.getElementById('search_go');
+                                                    if (xnm) {
+                                                        xnm.value = '${selectedYear.escapeForJs()}';
+                                                        xnm.dispatchEvent(new Event('change', { bubbles: true }));
+                                                    }
+                                                    if (xqm) {
+                                                        xqm.value = '${selectedSemester.escapeForJs()}';
+                                                        xqm.dispatchEvent(new Event('change', { bubbles: true }));
+                                                    }
+                                                    setTimeout(function() {
+                                                        if (btn) btn.click();
+                                                        setTimeout(function() {
+                                                            window.HTMLOUT.processHTML(document.documentElement.outerHTML);
+                                                        }, 3000);
+                                                    }, 600);
+                                                })();
+                                            """.trimIndent()
                                             view.evaluateJavascript(js, null)
                                         }
                                         else if (safeUrl.contains("index") || safeUrl.contains("main") || safeUrl.contains("initMenu")) {
@@ -278,5 +363,85 @@ fun LoginScreen(onBack: () -> Unit, onLoginSuccess: (String) -> Unit) {
                 }
             }
         }
+    }
+
+    // ⭐ 学年弹窗
+    if (showYearDialog) {
+        AlertDialog(
+            onDismissRequest = { showYearDialog = false },
+            title = { Text("选择学年", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    yearOptions.forEach { option ->
+                        val isSelected = option.value == selectedYear
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                selectedYear = option.value
+                                showYearDialog = false
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    option.label,
+                                    fontSize = 16.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                                if (isSelected) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    Text("✓", fontSize = 18.sp, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showYearDialog = false }) { Text("取消") } }
+        )
+    }
+
+    // ⭐ 学期弹窗
+    if (showSemesterDialog) {
+        AlertDialog(
+            onDismissRequest = { showSemesterDialog = false },
+            title = { Text("选择学期", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    semesterOptions.forEach { option ->
+                        val isSelected = option.value == selectedSemester
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().clickable {
+                                selectedSemester = option.value
+                                showSemesterDialog = false
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    option.label,
+                                    fontSize = 16.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                                if (isSelected) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                    Text("✓", fontSize = 18.sp, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSemesterDialog = false }) { Text("取消") } }
+        )
     }
 }

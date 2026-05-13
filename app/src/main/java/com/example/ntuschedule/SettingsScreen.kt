@@ -506,7 +506,7 @@ private fun AboutSubScreen(
                 Column {
                     ListItem(
                         headlineContent = { Text("当前版本") },
-                        supportingContent = { Text("V 1.3.2") },
+                        supportingContent = { Text("V 1.3.5") },
                         leadingContent = { Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary) },
                         modifier = Modifier.clickable {
                             versionTapCount++

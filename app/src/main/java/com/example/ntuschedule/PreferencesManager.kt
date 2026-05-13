@@ -20,6 +20,16 @@ object PreferencesManager {
     // ⭐ 全局主题色
     private val GLOBAL_COLOR_INDEX_KEY = intPreferencesKey("global_color_index")
 
+    // ⭐ 学年学期（用于智能导入时自动切换课表页的学年/学期）
+    private val ACADEMIC_YEAR_KEY = stringPreferencesKey("academic_year")
+    private val SEMESTER_KEY = stringPreferencesKey("semester")
+
+    fun getAcademicYear(context: Context): Flow<String> = context.dataStore.data.map { it[ACADEMIC_YEAR_KEY] ?: "" }
+    fun getSemester(context: Context): Flow<String> = context.dataStore.data.map { it[SEMESTER_KEY] ?: "" }
+
+    suspend fun saveAcademicYear(context: Context, year: String) { context.dataStore.edit { it[ACADEMIC_YEAR_KEY] = year } }
+    suspend fun saveSemester(context: Context, semester: String) { context.dataStore.edit { it[SEMESTER_KEY] = semester } }
+
     fun getStartDate(context: Context): Flow<Long> = context.dataStore.data.map { it[START_DATE_KEY] ?: System.currentTimeMillis() }
     suspend fun saveStartDate(context: Context, timeMillis: Long) { context.dataStore.edit { it[START_DATE_KEY] = timeMillis } }
 
